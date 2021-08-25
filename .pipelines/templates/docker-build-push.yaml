@@ -1,0 +1,95 @@
+parameters:
+  # Required parameterss
+  - name: artifactoryServiceConnection
+    type: string
+  - name: artifactoryRepoNonProdLocal
+    type: string
+  - name: artifactoryBuildPrefix
+    type: string
+  - name: dockerRegistryConnections
+    type: object
+  - name: dockerImageName
+    type: string
+  - name: artifactoryRepoUrlNonProdLocal
+    type: string
+  - name: artifactoryRepoProd
+    type: string
+  - name: dockerImageTag
+    type: string
+  - name: dockerBuildArgs
+    type: string
+
+  # Optioal parameters
+  - name: dockerBuildContext
+    type: string
+    default: "core"
+  - name: dockerfilePath
+    type: string
+    default: "core/Dockerfile"
+
+steps:
+  # Login to Docker repos for pull, push and tagging
+  - ${{ each value in parameters.dockerRegistryConnections }}:
+      - task: Docker@2
+        displayName: "Docker: Login - ${{ value }}"
+        inputs:
+          command: login
+          containerRegistry: "${{ value }}"
+
+  # Docker build task
+  - task: Docker@2
+    displayName: "Docker: Build Image"
+    inputs:
+      repository: "${{ parameters.dockerImageName }}"
+      command: "build"
+      Dockerfile: "${{ parameters.dockerfilePath }}"
+      tags: "${{ parameters.dockerImageTag }}" # Docker task will automatically prefix tag based on authenticated repos as above
+      arguments: ${{ parameters.dockerBuildArgs }}
+
+  # Ensure JFrog CLI is installed on build agent
+  - task: ArtifactoryToolsInstaller@1
+    displayName: "Artifactory: Install JFrog CLI"
+    inputs:
+      artifactoryService: "${{ parameters.artifactoryServiceConnection }}"
+      cliInstallationRepo: "jfrog-cli-generic-remote"
+
+  # Push Docker image into NonProd ACME Repo
+  - task: ArtifactoryDocker@1
+    displayName: "Artifactory: Push image to repo"
+    inputs:
+      command: "push"
+      artifactoryService: "${{ parameters.artifactoryServiceConnection }}"
+      targetRepo: "${{ parameters.artifactoryRepoNonProdLocal }}"
+      imageName: "${{ parameters.artifactoryRepoUrlNonProdLocal }}/${{ parameters.dockerImageName }}:${{ parameters.dockerImageTag }}"
+      collectBuildInfo: true
+      buildName: "${{ parameters.artifactoryBuildPrefix }}-$(Build.DefinitionName)"
+      buildNumber: "${{ parameters.dockerImageTag }}"
+
+  # Publish build info to Artifactory for Xray scan
+  - task: ArtifactoryPublishBuildInfo@1
+    displayName: "Artifactory: Publish build info"
+    inputs:
+      artifactoryService: "${{ parameters.artifactoryServiceConnection }}"
+      buildName: "${{ parameters.artifactoryBuildPrefix }}-$(Build.DefinitionName)"
+      buildNumber: "${{ parameters.dockerImageTag }}"
+
+  # Scan pushed image for vulnerabilities using Xray
+  - task: ArtifactoryXrayScan@1
+    displayName: "Artifactory: Xray Scan"
+    inputs:
+      artifactoryService: "${{ parameters.artifactoryServiceConnection }}"
+      buildName: "${{ parameters.artifactoryBuildPrefix }}-$(Build.DefinitionName)"
+      buildNumber: "${{ parameters.dockerImageTag }}"
+      allowFailBuild: false # This should be set to 'true' eventually.
+
+  # Export Docker Image Tag to a file for artifact capture
+  - script: echo ${{ parameters.dockerImageTag }} > $(Build.ArtifactStagingDirectory)/dockerImageTag
+    condition: succeeded()
+    displayName: "Artifacts: Output Docker Image Tag to File"
+
+  # Capture Docker Image Tag
+  - task: PublishPipelineArtifact@1
+    displayName: "Artifacts: Publish"
+    inputs:
+      targetPath: $(Build.ArtifactStagingDirectory)
+      artifactName: dockerTag

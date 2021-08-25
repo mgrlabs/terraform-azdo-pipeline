@@ -1,0 +1,37 @@
+# Variables that are common to all docker images for the product
+variables:
+- name: artifactoryServiceConnection
+  value: 'artifactory-acmegroup-all'
+
+- name: artifactoryBuildPrefix
+  value: 'ESFX'
+
+- name: artifactoryRepoNonProdLocal
+  value: 'esfx-nonprod-docker-local'
+
+- name: artifactoryRepoNonProdVirtual
+  value: 'esfx-nonprod-docker-virtual'
+
+- name: artifactoryRepoProdLocal
+  value: 'esfx-prod-docker-local'
+
+- name: artifactoryRepoUrlNonProdLocal
+  value: 'acmegroup-esfx-nonprod-docker-local.jfrog.io'
+
+- name: artifactoryRepoUrlNonProdVirtual
+  value: 'acmegroup-esfx-nonprod-docker-virtual.jfrog.io'
+
+- name: artifactoryRepoUrlProdLocal
+  value: 'acmegroup-esfx-prod-docker-local.jfrog.io'
+
+- name: artifactoryRepoUrlProdVirtual
+  value: 'acmegroup-esfx-prod-docker-virtual.jfrog.io'
+
+- name: artifactoryRepoProd
+  value: 'acmegroup-esfx-prod-docker-local.jfrog.io'
+
+- name: artifactoryRepoProdVirtual
+  value: 'acmegroup-esfx-prod-docker-virtual.jfrog.io'
+
+- name: artifactProject
+  value: 'ESIFileXchange'

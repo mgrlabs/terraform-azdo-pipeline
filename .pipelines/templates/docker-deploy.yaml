@@ -1,0 +1,86 @@
+parameters:
+# Required parameters
+- name: artifactPipeline
+  type: string
+- name: environment
+  type: string
+- name: artifactoryRepoUrlVirtual
+  type: string
+- name: gitTagSuffix
+  type: string
+- name: dockerImageName
+  type: string
+
+# Prod Parameters
+- name: artifactoryServiceConnection
+  type: string
+  default: 'artifactory-acmegroup-all'
+- name: artifactoryRepoProdLocal
+  type: string
+  default: false
+- name: artifactoryRepoNonProdVirtual
+  type: string
+  default: false
+- name: artifactoryBuildName
+  type: string
+  default: false
+- name: artifactoryBuildNumber
+  type: string
+  default: false
+
+steps:
+
+# Download Docker image tag from build pipeline
+- download: ${{ parameters.artifactPipeline }}
+  condition: succeeded()
+  displayName: 'Docker: Download current artifact'
+
+# Export docker image tag as a variable
+- script: echo "##vso[task.setvariable variable=dockerImageTag]$(cat $(Pipeline.Workspace)/${{ parameters.artifactPipeline }}/dockerTag/dockerImageTag)"
+  condition: succeeded()
+  displayName: 'Kustomize: Set image tag environment'
+
+############################################################
+# Prod Only: Promote docker image to production
+############################################################
+
+# Ensure JFrog CLI is installed on build agent
+- task: ArtifactoryToolsInstaller@1
+  condition: and(succeeded(), eq('${{ parameters.environment }}', 'prod'))
+  displayName: "Prod: Install Artifactory JFrog CLI"
+  inputs:
+    artifactoryService: "${{ parameters.artifactoryServiceConnection }}"
+    cliInstallationRepo: "jfrog-cli-generic-remote"
+
+# Promote the docker image to prod repo if environment equals prod
+- task: ArtifactoryBuildPromotion@1
+  condition: and(succeeded(), eq('${{ parameters.environment }}', 'prod'))
+  displayName: 'Prod: Promote Build to Prod Artifactory repo'
+  inputs:
+    artifactoryService: '${{ parameters.artifactoryServiceConnection }}'
+    buildName: '${{ parameters.artifactoryBuildName }}'
+    buildNumber: '${{ parameters.artifactoryBuildNumber }}'
+    sourceRepo: '${{ parameters.artifactoryRepoNonProdVirtual }}'
+    targetRepo: '${{ parameters.artifactoryRepoProdLocal }}'
+    status: 'Released'
+    includeDependencies: false
+    copy: false
+    dryRun: false
+
+############################################################
+# All: Update Image Tag on manifest and commit as tag
+############################################################
+
+# Run script that updates the kubernetes manifest using kustomize and pushes tag to git
+- task: Bash@3
+  condition: succeeded()
+  displayName: 'Kustomize: Bake manifest and push change to git'
+  inputs:
+    targetType: filePath
+    filePath: scripts/bake_docker_manifest.sh
+  env: 
+    ENVIRONMENT: '${{ parameters.environment }}'
+    DOCKER_REPO: '${{ parameters.artifactoryRepoUrlVirtual }}'
+    APP_NAME_SUFFIX: '${{ parameters.gitTagSuffix }}'
+    IMAGE_CUSTOMVERSION: '$(dockerImageTag)'
+    DOCKER_IMAGE_NAME: '${{ parameters.dockerImageName }}'

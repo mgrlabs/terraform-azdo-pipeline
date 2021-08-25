@@ -1,0 +1,106 @@
+# ESI FileXchange (ESFX) Docker build pipeline
+
+trigger:
+  branches:
+    include:
+      - master
+      - feature/*
+      - fix/*
+  paths:
+    include:
+      - .pipelines/core-docker-build.yaml
+      - .pipelines/templates/docker-build-push.yaml
+      - .pipelines/templates/npm-repo-config.yaml
+      - core/src
+      - core/package.json
+      - core/yarn.lock
+      - core/Dockerfile
+    exclude:
+      - README.md
+
+variables:
+  # Project specific variables
+  - name: projectBaseDir
+    value: 'core'
+  - name: dockerImageName
+    value: "acme-sftp-common"
+  
+  # Pipeline common variables
+  - template: variables/npm-common.yaml
+  - template: variables/docker-common.yaml
+
+  # Set docker image tag based on branch
+  - name: dockerImageTag
+    ${{ if eq( variables['Build.SourceBranchName'], 'master' ) }}:
+      value: "$(Build.BuildNumber)"
+    ${{ if ne( variables['Build.SourceBranchName'], 'master' ) }}:
+      value: "$(Build.BuildNumber)-$(Build.SourceBranchName)"
+
+stages:
+
+  ############################################
+  # Code Tests
+  ############################################
+
+  - stage: code_tests
+    displayName: "Code: Tests"
+    jobs:
+      - job: codeTests
+        displayName: "Code: SonarQube Scan"
+        pool:
+          name: "Coles-Private-Hosted-Linux-NonProduction"
+        steps:
+          - checkout: self
+            displayName: "Git: Checkout Azure repo"
+            persistCredentials: true
+          - template: templates/npm-repo-config.yaml
+            parameters:
+              npmRepoSuffix: ${{ variables.npmRepoSuffix }}
+              projectBaseDir: ${{ variables.projectBaseDir }}
+              projectSecretsKeyVault: ${{ variables.projectSecretsKeyVault }}
+              armServiceConnection: ${{ variables.armServiceConnection }}
+          - template: templates/sonarqube-tests.yaml
+            parameters:
+              projectBaseDir: ${{ variables.projectBaseDir }}
+
+  ############################################
+  # Docker: Build & Push
+  ############################################
+
+  - stage: docker_build_push
+    dependsOn: code_tests
+    displayName: "Docker: Build & Push"
+    jobs:
+      - job: dockerBuildPush
+        displayName: "Docker: Build & Push"
+        pool:
+          vmimage: "ubuntu-latest"
+        steps:
+          - checkout: self
+            displayName: "Git: Checkout Azure repo"
+            persistCredentials: true
+
+          # Configure NPM for Artifactory repo
+          - template: templates/npm-repo-config.yaml
+            parameters:
+              npmRepoSuffix: ${{ variables.npmRepoSuffix }}
+              projectBaseDir: ${{ variables.projectBaseDir }}
+              projectSecretsKeyVault: ${{ variables.projectSecretsKeyVault }}
+              armServiceConnection: ${{ variables.armServiceConnection }}
+
+          # Docker build, push and Xray scan
+          - template: templates/docker-build-push.yaml
+            parameters:
+              dockerImageTag: ${{ variables.dockerImageTag }}
+              artifactoryServiceConnection: ${{ variables.artifactoryServiceConnection }}
+              artifactoryRepoNonProdLocal: ${{ variables.artifactoryRepoNonProdLocal }}
+              artifactoryBuildPrefix: ${{ variables.artifactoryBuildPrefix }}
+              dockerImageName: ${{ variables.dockerImageName }}
+              artifactoryRepoUrlNonProdLocal: ${{ variables.artifactoryRepoUrlNonProdLocal }}
+              artifactoryRepoProd: ${{ variables.artifactoryRepoProd }}
+              dockerRegistryConnections:
+                - docker-registry-esfx-nonprod-local
+                - docker-registry-esfx-nonprod-virtual
+              dockerBuildArgs: |
+                --build-arg NPM_CONFIG_REGISTRY=https://colesgroup.jfrog.io/artifactory/api/npm/${{ variables.npmRepoSuffix }}/
+                --build-arg REPO_NAME=${{ variables.artifactoryRepoUrlNonProdVirtual }}

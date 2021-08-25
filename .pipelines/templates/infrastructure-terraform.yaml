@@ -1,0 +1,164 @@
+parameters:
+- name: serviceConnectionName
+  type: string
+- name: environment
+  type: string
+- name: tfWorkingDirectory
+  type: string
+- name: tfVarsDir
+  type: string
+- name: tfStateStorageAccountName
+  type: string
+- name: terraformVersion
+  type: string
+- name: tfStateResourcGroupName
+  type: string
+- name: tfStateContainerName
+  type: string
+  default: 'tfstate'
+- name: tfStateKey
+  type: string
+  default: 'terraform.tfstate'
+- name: tfPlanName
+  type: string
+- name: tfApply
+  type: boolean
+  default: false
+- name: tfRemoteState
+  type: boolean
+  default: false
+
+steps:
+
+# Checkout the Azure repo
+- checkout: self
+  displayName: 'Git: Checkout Azure repo'
+  persistCredentials: true
+
+# Pin Terraform to a specific version
+- task: TerraformInstaller@0
+  condition: succeeded()
+  displayName: 'Terraform: Version Pin'
+  inputs:
+      terraformVersion: ${{ parameters.terraformVersion }}
+
+# Terraform Format in dev
+- task: TerraformCLI@0
+  condition: and(succeeded(), eq('${{ parameters.environment }}', 'dev'), eq('${{ parameters.tfApply }}', 'false'))
+  displayName: 'Terraform: Format'
+  inputs:
+    command: fmt
+    workingDirectory: '$(System.DefaultWorkingDirectory)/${{ parameters.tfWorkingDirectory }}'
+    commandOptions: '-write=false -diff -recursive'
+
+############################################################
+# Terraform Common Steps
+############################################################
+
+# Check that tfstate container exists and break active lease (to be removed!)
+- task: AzureCLI@2
+  condition: and
+    (
+      succeeded(),
+      eq('${{ parameters.tfApply }}', 'false'),
+      eq('${{ parameters.tfRemoteState }}', 'true')
+    )
+  displayName: 'Terraform: Remote State'
+  inputs:
+    azureSubscription: ${{ parameters.serviceConnectionName }}
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      az storage container create --name ${{ parameters.tfStateContainerName }} --account-name ${{ parameters.tfStateStorageAccountName }} --query created --output tsv
+      az storage blob lease break --blob-name ${{ parameters.tfStateKey }} --container-name ${{ parameters.tfStateContainerName }} --account-name ${{ parameters.tfStateStorageAccountName }} --auth-mode key || echo "Error: No lease on tfstate!"
+
+# Terraform Init
+- task: TerraformCLI@0
+  condition: succeeded()
+  displayName: 'Terraform: Init'
+  inputs:
+    command: init
+    backendType: azurerm
+    environmentServiceName: ${{ parameters.serviceConnectionName }}
+    backendServiceArm: ${{ parameters.serviceConnectionName }}
+    workingDirectory: '$(System.DefaultWorkingDirectory)/${{ parameters.tfWorkingDirectory }}'
+    backendAzureRmResourceGroupName: ${{ parameters.tfStateResourcGroupName }}
+    backendAzureRmStorageAccountName: ${{ parameters.tfStateStorageAccountName }}
+    backendAzureRmContainerName: ${{ parameters.tfStateContainerName }}
+    backendAzureRmKey: ${{ parameters.tfStateKey }}
+
+############################################################
+# Terraform Plan Steps - Executed when tfApply = false
+############################################################
+
+# Validate Terraform code
+- task: TerraformCLI@0
+  condition: and(succeeded(), eq('${{ parameters.tfApply }}', 'false'))
+  displayName: 'Plan: Validate'
+  inputs:
+    command: validate
+    workingDirectory: '$(System.DefaultWorkingDirectory)/${{ parameters.tfWorkingDirectory }}'
+
+# Terraform Plan
+- task: TerraformCLI@0
+  condition: and(succeeded(), eq('${{ parameters.tfApply }}', 'false'))
+  displayName: 'Plan: Terraform Plan'
+  inputs:
+    command: plan
+    backendType: azurerm
+    environmentServiceName: ${{ parameters.serviceConnectionName }}
+    backendServiceArm: ${{ parameters.serviceConnectionName }}
+    workingDirectory: '$(System.DefaultWorkingDirectory)/${{ parameters.tfWorkingDirectory }}'
+    publishPlanResults: '${{ parameters.tfPlanName }}_${{ parameters.environment }}'
+    commandOptions: '-var-file ${{ parameters.tfVarsDir }}/${{ parameters.environment }}.tfvars -out=${{ parameters.tfPlanName }}.plan -detailed-exitcode'
+
+# Set output variable to detect Terraform Plan changes in Apply stage
+- script: echo "##vso[task.setvariable variable=tfPlanBoolean;isOutput=true]$TERRAFORM_PLAN_HAS_CHANGES"
+  condition: and(succeeded(), eq('${{ parameters.tfApply }}', 'false'))
+  displayName: 'Plan: Set Plan Change Boolean'
+  name: tfPlanChanges
+
+# Copy TF plan into artifact staging area
+- task: CopyFiles@2
+  condition: and
+    (
+      succeeded(),
+      eq('${{ parameters.tfApply }}', 'false'),
+      eq(variables['TERRAFORM_PLAN_HAS_CHANGES'], 'true')
+    )
+  displayName: 'Plan: Copy To Staging'
+  inputs:
+    contents: '$(System.DefaultWorkingDirectory)/${{ parameters.tfWorkingDirectory }}/${{ parameters.tfPlanName }}.plan'
+    targetFolder: '$(Build.ArtifactStagingDirectory)'
+
+# Publish artifacts
+- publish: '$(Build.ArtifactStagingDirectory)'
+  condition: and
+    (
+      succeeded(),
+      eq('${{ parameters.tfApply }}', 'false'),
+      eq(variables['TERRAFORM_PLAN_HAS_CHANGES'], 'true')
+    )
+  displayName: 'Plan: Publish Artifacts'
+  artifact: ${{ parameters.environment }}Plan
+
+############################################################
+# Terraform Apply Steps - Executed when tfApply = true
+############################################################
+
+# Download Terraform plan
+- download: current
+  condition: and(succeeded(), eq('${{ parameters.tfApply }}', 'true'))
+  displayName: 'Apply: Download Artifacts'
+
+# Terraform Apply
+- task: TerraformCLI@0
+  condition: and(succeeded(), eq('${{ parameters.tfApply }}', 'true'))
+  displayName: 'Apply: Terraform Apply'
+  inputs:
+    command: apply
+    backendType: azurerm
+    environmentServiceName: ${{ parameters.serviceConnectionName }}
+    backendServiceArm: ${{ parameters.serviceConnectionName }}
+    workingDirectory: '$(System.DefaultWorkingDirectory)/${{ parameters.tfWorkingDirectory }}'
+    commandOptions: '$(Pipeline.Workspace)/${{ parameters.environment }}Plan/${{ parameters.tfWorkingDirectory }}/${{ parameters.tfPlanName }}.plan'

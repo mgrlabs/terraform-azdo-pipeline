@@ -1,0 +1,8 @@
+# Prod environment 
+variables:
+  environment: 'prod'
+  serviceConnectionName: 'Azure Cloud NonProd - acme - dev' # To be updated once we have access to the prod environment
+  tfStateStorageAccountName: 'UPDATE ME' # To be updated once we have access to the prod environment
+  tfStateResourcGroupName: 'RG_INTEGRATION_acme_BASE_PROD_AUE'
+  agentPool: 'ACME-Private-Hosted-Linux-Production'
+  adfSharedIntegrationRuntimeResourceId: '/subscriptions/8dfb7356-39fe-47df-8c17-559bc009f82f/resourcegroups/RG_INTEGRATION_MASTERADF_MASTER_PROD_AUE/providers/Microsoft.DataFactory/factories/ADF-PINT-MASTER-PROD-AUE/integrationruntimes/ADF-PINT-MASTER-PROD-AUE'

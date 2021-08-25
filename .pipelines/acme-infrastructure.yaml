@@ -1,0 +1,223 @@
+# CS DataXchange (ACME) Infrastructure as Code Pipeline
+
+trigger:
+  branches:
+    include:
+    - master
+    - feature/*
+    - fix/*
+  paths:
+    include:
+    - .pipelines/acme-infrastructure.yaml
+    - .pipelines/templates/infrastructure-terraform.yaml
+    - terraform
+    - environment
+    - modules
+    exclude:
+    - README.md
+
+# Common Pipeline Variables
+variables:
+  terraformVersion: 0.15.4
+  productShortName: 'acme'
+  tfWorkingDirectory: 'terraform'
+  tfVarsDir: '../environment' # relative path
+  prodEnable: false
+  adfSHIRLink: true
+
+
+stages:
+
+############################################
+# Environment: Dev
+############################################
+
+# Terraform Plan
+- stage: plan_dev
+  displayName: 'Plan: Dev'
+  variables:
+    - template: variables/infra-dev.yaml
+  jobs:
+  - job: planDev
+    displayName: 'Dev: Terraform Plan'
+    pool:
+      name: ${{ variables.agentPool }}
+    steps:
+    - template: templates/infrastructure-terraform.yaml
+      parameters:
+        tfApply: false
+        environment: ${{ variables.environment }}
+        serviceConnectionName: ${{ variables.serviceConnectionName }}
+        terraformVersion: ${{ variables.terraformVersion }}
+        tfStateStorageAccountName: ${{ variables.tfStateStorageAccountName }}
+        tfStateResourcGroupName: ${{ variables.tfStateResourcGroupName }}
+        tfPlanName: ${{ variables.productShortName }}
+        tfWorkingDirectory: ${{ variables.tfWorkingDirectory }}
+        tfVarsDir: ${{ variables.tfVarsDir }}
+
+# Terraform Apply
+- stage: deploy_dev
+  condition: and
+    (
+      succeeded(), eq(dependencies.plan_dev.outputs['planDev.tfPlanChanges.tfPlanBoolean'], 'true')
+    )
+  dependsOn: plan_dev
+  displayName: 'Apply: Dev'
+  variables:
+    - template: variables/infra-dev.yaml
+  jobs:
+  - deployment: InfraDeployDev
+    environment: 'dev-acme-iac'
+    displayName: 'Dev: Terraform Apply'
+    pool:
+      name: ${{ variables.agentPool }}
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - template: templates/infrastructure-terraform.yaml
+            parameters:
+              tfApply: true
+              environment: ${{ variables.environment }}
+              serviceConnectionName: ${{ variables.serviceConnectionName }}
+              terraformVersion: ${{ variables.terraformVersion }}
+              tfStateStorageAccountName: ${{ variables.tfStateStorageAccountName }}
+              tfStateResourcGroupName: ${{ variables.tfStateResourcGroupName }}
+              tfPlanName: ${{ variables.productShortName }}
+              tfWorkingDirectory: ${{ variables.tfWorkingDirectory }}
+              tfVarsDir: ${{ variables.tfVarsDir }}
+  
+
+############################################
+# Environment: SIT
+############################################
+
+# Terraform Plan
+- stage: plan_sit
+  dependsOn: []
+  displayName: 'Plan: SIT'
+  variables:
+    - template: variables/infra-sit.yaml
+  jobs:
+  - job: planSIT
+    displayName: 'SIT: Terraform Plan'
+    pool:
+      name: ${{ variables.agentPool }}
+    steps:
+    - template: templates/infrastructure-terraform.yaml
+      parameters:
+        tfApply: false
+        environment: ${{ variables.environment }}
+        serviceConnectionName: ${{ variables.serviceConnectionName }}
+        terraformVersion: ${{ variables.terraformVersion }}
+        tfStateStorageAccountName: ${{ variables.tfStateStorageAccountName }}
+        tfStateResourcGroupName: ${{ variables.tfStateResourcGroupName }}
+        tfPlanName: ${{ variables.productShortName }}
+        tfWorkingDirectory: ${{ variables.tfWorkingDirectory }}
+        tfVarsDir: ${{ variables.tfVarsDir }}
+
+# Terraform Apply
+- stage: deploy_sit
+  condition: and
+    (
+      eq(variables['Build.SourceBranch'], 'refs/heads/master'),
+      in(dependencies.deploy_dev.result, 'Succeeded', 'Skipped'),
+      eq(dependencies.plan_sit.outputs['planSIT.tfPlanChanges.tfPlanBoolean'], 'true')
+    )
+  dependsOn:
+    - plan_sit
+    - deploy_dev
+  displayName: 'Apply: SIT'
+  variables:
+    - template: variables/infra-sit.yaml
+  jobs:
+  - deployment: InfraDeploySIT
+    environment: 'sit-acme-iac'
+    displayName: 'SIT: Terraform Apply'
+    pool:
+      name: ${{ variables.agentPool }}
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - template: templates/infrastructure-terraform.yaml
+            parameters:
+              tfApply: true
+              environment: ${{ variables.environment }}
+              serviceConnectionName: ${{ variables.serviceConnectionName }}
+              terraformVersion: ${{ variables.terraformVersion }}
+              tfStateStorageAccountName: ${{ variables.tfStateStorageAccountName }}
+              tfStateResourcGroupName: ${{ variables.tfStateResourcGroupName }}
+              tfPlanName: ${{ variables.productShortName }}
+              tfWorkingDirectory: ${{ variables.tfWorkingDirectory }}
+              tfVarsDir: ${{ variables.tfVarsDir }}
+
+############################################
+# Environment: Prod
+############################################
+
+# Terraform Plan
+- stage: plan_prod
+  condition: and
+    (
+      succeeded(),
+      eq('${{ variables.prodEnable }}', 'true')
+    )
+  dependsOn: []
+  displayName: 'Plan: Prod'
+  variables:
+    - template: variables/infra-prod.yaml
+  jobs:
+  - job: planProd
+    displayName: 'Prod: Terraform Plan'
+    pool:
+      name: ${{ variables.agentPool }}
+    steps:
+    - template: templates/infrastructure-terraform.yaml
+      parameters:
+        tfApply: false
+        environment: ${{ variables.environment }}
+        serviceConnectionName: ${{ variables.serviceConnectionName }}
+        terraformVersion: ${{ variables.terraformVersion }}
+        tfStateStorageAccountName: ${{ variables.tfStateStorageAccountName }}
+        tfStateResourcGroupName: ${{ variables.tfStateResourcGroupName }}
+        tfPlanName: ${{ variables.productShortName }}
+        tfWorkingDirectory: ${{ variables.tfWorkingDirectory }}
+        tfVarsDir: ${{ variables.tfVarsDir }}
+
+# Terraform Apply
+- stage: deploy_prod
+  condition: and
+    (
+      eq(variables['Build.SourceBranch'], 'refs/heads/master'),
+      in(dependencies.deploy_test.result, 'Succeeded', 'Skipped'), 
+      eq(dependencies.plan_prod.outputs['planProd.tfPlanChanges.tfPlanBoolean'], 'true'),
+      eq('${{ variables.prodEnable }}', 'true')
+    )
+  dependsOn:
+    - plan_prod
+    - deploy_sit
+  displayName: 'Apply: Prod'
+  variables:
+    - template: variables/infra-prod.yaml
+  jobs:
+  - deployment: InfraDeployProd
+    environment: 'prod-acme-iac'
+    displayName: 'Prod: Terraform Apply'
+    pool:
+      name: ${{ variables.agentPool }}
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - template: templates/infrastructure-terraform.yaml
+            parameters:
+              tfApply: true
+              environment: ${{ variables.environment }}
+              serviceConnectionName: ${{ variables.serviceConnectionName }}
+              terraformVersion: ${{ variables.terraformVersion }}
+              tfStateStorageAccountName: ${{ variables.tfStateStorageAccountName }}
+              tfStateResourcGroupName: ${{ variables.tfStateResourcGroupName }}
+              tfPlanName: ${{ variables.productShortName }}
+              tfWorkingDirectory: ${{ variables.tfWorkingDirectory }}
+              tfVarsDir: ${{ variables.tfVarsDir }}

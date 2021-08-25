@@ -1,0 +1,8 @@
+# SIT environment 
+variables:
+  environment: 'sit'
+  serviceConnectionName: 'Azure Cloud NonProd - acme - sit'
+  tfStateStorageAccountName: 'stphacmesitd0yfu'
+  tfStateResourcGroupName: 'RG_INTEGRATION_acme_BASE_SIT_AUE'
+  agentPool: 'ACME-Private-Hosted-Linux-NonProduction'
+  adfSharedIntegrationRuntimeResourceId: '/subscriptions/1ceef401-2164-4c69-8301-f06461c00e9b/resourcegroups/RG_INTEGRATION_MASTERADF_MASTER_NONPROD_AUE/providers/Microsoft.DataFactory/factories/ADF-PINT-MASTER-NONPROD-AUE/integrationruntimes/ADF-PINT-MASTER-NONPROD-AUE'

@@ -1,0 +1,126 @@
+resources:
+  pipelines:
+  - pipeline: dockerBuildPipeline
+    source: core-docker-build-common
+    trigger:
+      branches:
+        - feature/*
+        - fix/*
+        - master
+
+trigger:
+  paths:
+    include:
+    - deploy
+
+variables:
+- name: agentPool
+  value: 'ACME-Private-Hosted-Linux-NonProduction'
+
+# Docker variables common to all pipelines
+- template: variables/docker-common.yaml
+
+# Variables specific to this pipeline
+- name: gitTagSuffix
+  value: 'sftp-server'
+- name: dockerImageName
+  value: 'esfx-sftp-common'
+- name: dockerBuildPipelineAlias
+  value: dockerBuildPipeline
+
+stages:
+
+############################################
+# Dev: Update Kubernetes Manifest
+############################################
+
+- stage: devDeploy
+  condition: ne(variables['resources.pipeline.dockerBuildPipeline.sourceBranch'], 'refs/heads/master')
+  displayName: 'Dev: Deploy'
+  jobs:
+  - deployment: DockerDeployDev
+    environment: 'dev-esfx-microservices'
+    displayName: 'Dev: Update Manifest'
+    pool:
+      name: ${{ variables.agentPool }}
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
+            displayName: 'Git: Checkout Azure repo'
+            persistCredentials: true
+          - template: templates/docker-deploy.yaml
+            parameters:
+              environment: 'dev'
+              artifactPipeline: 'dockerBuildPipeline'
+              artifactoryRepoUrlVirtual: ${{ variables.artifactoryRepoUrlNonProdVirtual }}
+              gitTagSuffix: ${{ variables.gitTagSuffix }}
+              dockerImageName: ${{ variables.dockerImageName }}
+
+############################################
+# Test: Update Kubernetes Manifest
+############################################
+
+- stage: testDeploy
+  condition: in(dependencies.devDeploy.result, 'Succeeded', 'Skipped')
+  dependsOn: devDeploy
+  displayName: 'Test: Deploy'
+  jobs:
+  - deployment: DockerDeployTest
+    environment: 'test-esfx-microservices'
+    displayName: 'Test: Update Manifest'
+    pool:
+      name: ${{ variables.agentPool }}
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
+            displayName: 'Git: Checkout Azure repo'
+            persistCredentials: true
+          - template: templates/docker-deploy.yaml
+            parameters:
+              environment: 'test'
+              artifactPipeline: 'dockerBuildPipeline'
+              artifactoryRepoUrlVirtual: ${{ variables.artifactoryRepoUrlNonProdVirtual }}
+              gitTagSuffix: ${{ variables.gitTagSuffix }}
+              dockerImageName: ${{ variables.dockerImageName }}
+
+############################################
+# Prod: Update Kubernetes Manifest
+############################################
+
+- stage: prodDeploy
+  condition: and
+    (
+      in(dependencies.testDeploy.result, 'Succeeded', 'Skipped'),
+      eq(variables['resources.pipeline.dockerBuildPipeline.sourceBranch'], 'refs/heads/master')
+    )
+  dependsOn: testDeploy
+  displayName: 'Prod: Deploy'
+  jobs:
+  - deployment: DockerDeployProd
+    environment: 'prod-esfx-microservices'
+    displayName: 'Prod: Update Manifest'
+    pool:
+      name: ${{ variables.agentPool }}
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
+            displayName: 'Git: Checkout Azure repo'
+            persistCredentials: true
+          - template: templates/docker-deploy.yaml
+            parameters:
+              environment: 'prod'
+              artifactPipeline: 'dockerBuildPipeline'
+              artifactoryServiceConnection: 'artifactory-acmegroup-all'
+              artifactoryRepoProdLocal: ${{ variables.artifactoryRepoProdLocal }}
+              artifactoryRepoNonProdVirtual: ${{ variables.artifactoryRepoNonProdVirtual }}
+              artifactoryRepoUrlVirtual: ${{ variables.artifactoryRepoUrlProdVirtual }}
+              artifactoryBuildName: '${{ variables.artifactoryBuildPrefix }}-$(resources.pipeline.dockerBuildPipeline.pipelineName)'
+              artifactoryBuildNumber: '$(resources.pipeline.dockerBuildPipeline.runName)'
+              gitTagSuffix: '${{ variables.gitTagSuffix }}'
+              dockerImageName: '${{ variables.dockerImageName }}'
