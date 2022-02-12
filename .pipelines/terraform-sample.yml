@@ -1,12 +1,9 @@
-on:
-  push:
-    branches:
-      - master
-      - feature/*
-  pull_request:
-    branches: 
-      - main
+trigger:
+- master
+- feature/*
 
+pr:
+- master
 
 resources:
   repositories:
