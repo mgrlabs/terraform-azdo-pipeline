@@ -15,11 +15,11 @@ stages:
   - stage: Build
     jobs:
     - template: terraform/plan.yml@templates
-      parameters:
-        preBuild:
-          - task: Bash@3
-            displayName: 'Add custom configuration'
-            inputs:
-              targetType: 'inline'
-              script: |
-                echo Add a specific configuration
+      # parameters:
+      #   preBuild:
+      #     - task: Bash@3
+      #       displayName: 'Add custom configuration'
+      #       inputs:
+      #         targetType: 'inline'
+      #         script: |
+      #           echo Add a specific configuration
