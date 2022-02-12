@@ -19,6 +19,7 @@ stages:
     variables:
       backendConfig: 'dev.tfbackend'
       workingDirectory: 'environments/dev'
+      environment: 'dev'
     jobs:
     - template: terraform/plan.yml@templates
       # parameters:
