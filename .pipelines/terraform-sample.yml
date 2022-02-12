@@ -29,21 +29,21 @@ stages:
     jobs:
     - template: terraform/plan.yml@templates
 
-  # - stage: dev_apply
-  #   variables:
-  #     backendConfig: 'dev.tfbackend'
-  #     workingDirectory: 'environments/dev'
-  #     environment: 'dev'
-  #   jobs:
-  #   - deployment: 'deploy'
-  #     displayName: 'Terraform: Apply'
-  #     environment: 'dev-infra'
-  #     variables:
-  #       backendConfig: 'dev.tfbackend'
-  #       workingDirectory: 'environments/dev'
-  #       environment: 'dev'
-  #     strategy:
-  #       runOnce:
-  #         deploy:
-  #           steps:
-  #             - template: terraform/plan.yml@templates
+  - stage: dev_apply
+    variables:
+      backendConfig: 'dev.tfbackend'
+      workingDirectory: 'environments/dev'
+      environment: 'dev'
+    jobs:
+    - deployment: 'deploy'
+      displayName: 'Terraform: Apply'
+      environment: 'dev-infra'
+      variables:
+        backendConfig: 'dev.tfbackend'
+        workingDirectory: 'environments/dev'
+        environment: 'dev'
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - template: terraform/plan.yml@templates
