@@ -1,4 +1,5 @@
 terraform {
+  backend "remote" {}
   required_version = ">= 1.1.0" # Pinned to a terraform version
   required_providers {
     azurerm = {
