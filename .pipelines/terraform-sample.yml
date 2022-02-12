@@ -1,4 +1,12 @@
-trigger: none
+on:
+  push:
+    branches:
+      - master
+      - feature/*
+  pull_request:
+    branches: 
+      - main
+
 
 resources:
   repositories:
