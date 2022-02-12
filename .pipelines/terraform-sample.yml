@@ -28,18 +28,18 @@ stages:
     jobs:
     - template: terraform/plan.yml@templates
       # parameters:
-  - stage: deploy_dev
-    dependsOn: plan_dev
-    displayName: 'Apply: Dev'
-    variables:
-      - template: variables/infra-dev.yaml
-    jobs:
-    - deployment: InfraDeployDev
-      environment: 'dev-infra'
-      displayName: 'Dev: Terraform Apply'
-      strategy:
-        runOnce:
-          deploy:
-            steps:
-            - template: terraform/plan.yml@templates
+  # - stage: deploy_dev
+  #   dependsOn: plan_dev
+  #   displayName: 'Apply: Dev'
+  #   variables:
+  #     - template: variables/infra-dev.yaml
+  #   jobs:
+  #   - deployment: InfraDeployDev
+  #     environment: 'dev-infra'
+  #     displayName: 'Dev: Terraform Apply'
+  #     strategy:
+  #       runOnce:
+  #         deploy:
+  #           steps:
+  #           - template: terraform/plan.yml@templates
               # parameters:
