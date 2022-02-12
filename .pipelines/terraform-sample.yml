@@ -1,4 +1,9 @@
-trigger: none
+trigger:
+- master
+- feature/*
+
+pr:
+- master
 
 resources:
   repositories:
@@ -22,4 +27,3 @@ stages:
       environment: 'dev'
     jobs:
     - template: terraform/plan.yml@templates
-      # parameters:
