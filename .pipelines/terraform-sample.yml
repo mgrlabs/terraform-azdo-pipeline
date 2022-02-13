@@ -25,21 +25,21 @@ stages:
 # Dev Environment
 ########################
 
-  - stage: 'Dev - Test'
+  - stage: 'dev_test'
     variables:
       backendConfig: 'dev.tfbackend'
       workingDirectory: 'environments/dev'
       environment: 'dev'
     jobs:
     - template: terraform/test.yml@templates
-  - stage: 'Dev - Plan'
+  - stage: 'dev_plan'
     variables:
       backendConfig: 'dev.tfbackend'
       workingDirectory: 'environments/dev'
       environment: 'dev'
     jobs:
     - template: terraform/plan.yml@templates
-  - stage: 'Dev - Apply'
+  - stage: 'dev_apply'
     variables:
       backendConfig: 'dev.tfbackend'
       workingDirectory: 'environments/dev'
