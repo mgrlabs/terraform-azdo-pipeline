@@ -26,6 +26,7 @@ stages:
 ########################
 
   - stage: 'dev_test'
+    displayName: 'Dev: Test'
     variables:
       backendConfig: 'dev.tfbackend'
       workingDirectory: 'environments/dev'
@@ -33,6 +34,7 @@ stages:
     jobs:
     - template: terraform/test.yml@templates
   - stage: 'dev_plan'
+    displayName: 'Dev: Plan'
     variables:
       backendConfig: 'dev.tfbackend'
       workingDirectory: 'environments/dev'
@@ -40,6 +42,7 @@ stages:
     jobs:
     - template: terraform/plan.yml@templates
   - stage: 'dev_apply'
+    displayName: 'Dev: Apply'
     variables:
       backendConfig: 'dev.tfbackend'
       workingDirectory: 'environments/dev'
